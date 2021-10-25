@@ -4,6 +4,7 @@ import (
 	"image"
 
 	"github.com/goplus/spx/internal/gdi"
+	"github.com/goplus/spx/internal/matrix"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/qiniu/x/objcache"
@@ -53,9 +54,11 @@ func (p *sprKey) get(sp *Sprite) *gdi.Sprite {
 
 func (p *sprKey) doGet(sp *Sprite) *gdi.Sprite {
 	w, h := sp.g.size()
+	if int(p.direction+p.costume.faceLeft)%90 == 0 {
+		return p.makeSprite(0, 0, 1, w, h, sp.g.fs)
+	}
 	img := ebiten.NewImage(w, h)
 	defer img.Dispose()
-
 	p.drawOn(img, 0, 0, sp.g.fs)
 	return gdi.NewSpriteFromScreen(img)
 }
@@ -215,3 +218,83 @@ var (
 )
 
 // -------------------------------------------------------------------------------------
+
+func (p *sprKey) makeSprite(px, py float64, scale float64, screenW int, screenH int, fs spxfs.Dir) *gdi.Sprite {
+	c := p.costume
+	img, centerX, centerY := c.needImage(fs)
+
+	scale = scale * p.scale / float64(c.bitmapResolution)
+	width, height := img.Size()
+	x, y, rotate, box := calcBox(px, py, float64(width), float64(height), centerX, centerY, float64(screenW), float64(screenH), scale, p.direction+c.faceLeft)
+	rc := box.Rect()
+	dst := ebiten.NewImage(rc.Dx(), rc.Dy())
+	DrawBox(dst, img, false, centerX, centerY, x, y, scale, rotate, box)
+	spr := gdi.NewSprite(dst, image.Rect(0, 0, rc.Dx(), rc.Dy()))
+	spr.Rect = rc
+	return spr
+}
+
+func DrawBox(target *ebiten.Image, img *ebiten.Image, tran bool, cx, cy, x, y, scale, rotate float64, box *Box) {
+	opt := &ebiten.DrawImageOptions{}
+	opt.GeoM.Translate(-cx, -cy)
+	opt.GeoM.Scale(scale, scale)
+	opt.GeoM.Rotate(rotate)
+	opt.GeoM.Translate(cx*scale, cy*scale)
+	if tran {
+		opt.GeoM.Translate(box.X, box.Y)
+	}
+	target.DrawImage(img, opt)
+}
+
+// sprite box
+type Box struct {
+	X      float64
+	Y      float64
+	Width  float64
+	Height float64
+}
+
+func (b *Box) Rect() image.Rectangle {
+	return image.Rect(int(b.X), int(b.Y), int(b.X+b.Width), int(b.Y+b.Height))
+}
+
+func calcBox(px, py float64, width, height, centerX, centerY float64, screenW, screenH, scale float64, direction float64) (x float64, y float64, rotate float64, box *Box) {
+	if direction == 90 {
+		x = screenW/2 + px*scale - centerX*scale
+		y = screenH/2 - py*scale - centerY*scale
+		box = &Box{x, y, width * scale, height * scale}
+	} else {
+		x = screenW/2 + px*scale - centerX*scale
+		y = screenH/2 - py*scale - centerY*scale
+		rotate = toRadian(direction - 90)
+
+		mt := matrix.Identity()
+		mt.Translate(-centerX, -centerY)
+		mt.Scale(scale, scale)
+		mt.Rotate(rotate)
+		mt.Translate(x+centerX*scale, y+centerY*scale)
+
+		oldpt := []float64{px, py, px, py + height, px + width, py + height, px + width, py}
+		points := mt.TransformPoints(oldpt)
+		maxY, minY, maxX, minX := -8000.0, 8000.0, -8000.0, 8000.0
+		for i := 0; i < len(points); i += 2 {
+			x := points[i]   //+ float64(screenW/2)
+			y := points[i+1] //+ float64(screenH/2)
+
+			if maxY < y {
+				maxY = y
+			}
+			if minY > y {
+				minY = y
+			}
+			if maxX < x {
+				maxX = x
+			}
+			if minX > x {
+				minX = x
+			}
+		}
+		box = &Box{minX, minY, maxX - minX, maxY - minY}
+	}
+	return
+}

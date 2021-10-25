@@ -16,6 +16,7 @@ import (
 	"github.com/goplus/spx/internal/coroutine"
 	"github.com/goplus/spx/internal/gdi"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 
 	spxfs "github.com/goplus/spx/fs"
 	_ "github.com/goplus/spx/fs/local"
@@ -512,6 +513,7 @@ func (p *Game) Update() error {
 func (p *Game) Draw(screen *ebiten.Image) {
 	dc := drawContext{Image: screen}
 	p.onDraw(dc)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("FPS %.1f TPS %.1f", ebiten.CurrentFPS(), ebiten.CurrentTPS()), p.width-150, 0)
 }
 
 type clicker interface {
